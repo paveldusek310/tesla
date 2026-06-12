@@ -28,20 +28,37 @@
 
       <form class="paste" id="paste-form" autocomplete="off">
         <input type="text" id="paste-input" class="paste-input"
-               placeholder="Paste any YouTube URL&hellip;"
+               placeholder="Paste any YouTube URL — or any other web link…"
                autocomplete="off" autocorrect="off" spellcheck="false">
-        <button type="submit" class="btn btn-paste">Load link</button>
+        <button type="submit" class="btn btn-paste">Load</button>
       </form>
     </section>
 
     <aside class="playlist-pane">
-      <div class="playlist-header">
-        <span id="playlist-title">Playlist</span>
-        <span class="playlist-count" id="playlist-count"></span>
+      <div class="sidebar-tabs">
+        <button class="tab active" id="tab-btn-playlist" type="button" data-tab="playlist">Playlist</button>
+        <button class="tab"        id="tab-btn-sources"  type="button" data-tab="sources">Sources</button>
       </div>
-      <ol class="playlist" id="playlist">
-        <li class="pl-empty">Loading&hellip;</li>
-      </ol>
+
+      <div class="tab-panel" id="tab-panel-playlist">
+        <div class="playlist-header">
+          <span id="playlist-title">Playlist</span>
+          <span class="playlist-count" id="playlist-count"></span>
+        </div>
+        <ol class="playlist" id="playlist">
+          <li class="pl-empty">Loading&hellip;</li>
+        </ol>
+      </div>
+
+      <div class="tab-panel hidden" id="tab-panel-sources">
+        <div class="playlist-header">
+          <span>Other sources</span>
+          <span class="playlist-count">opens new tab</span>
+        </div>
+        <ol class="source-list" id="source-list">
+          <li class="pl-empty">No extra sources configured.</li>
+        </ol>
+      </div>
     </aside>
 
   </main>

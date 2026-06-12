@@ -9,13 +9,29 @@ var SAVE_INTERVAL_MS = 5000;
 var BUILD_PLAYLIST_RETRY_MS = 400;
 var BUILD_PLAYLIST_MAX_TRIES = 25;
 
+// Sanitize the configured playlist ID. People often paste the whole
+// "...&si=XYZ" tracking suffix from YouTube's Share button; strip it.
+var PLAYLIST_ID = sanitizePlaylistId(typeof YOUTUBE_PLAYLIST_ID === 'string' ? YOUTUBE_PLAYLIST_ID : '');
+var API_KEY     = (typeof YOUTUBE_API_KEY === 'string') ? YOUTUBE_API_KEY : '';
+var SOURCES     = (typeof EXTRA_SOURCES !== 'undefined' && EXTRA_SOURCES) ? EXTRA_SOURCES : [];
+
 var player = null;
 var playlistData = [];   // [{videoId, title, thumbnail}]
 var currentIndex = -1;
 var saveTimer = null;
 var buildTries = 0;
-var restoredOnce = false;
 var pendingResume = null;
+
+function sanitizePlaylistId(s) {
+  if (!s) return '';
+  var str = String(s).trim();
+  // If they pasted a full URL or "?list=..." fragment, find the list= param.
+  var m = str.match(/[?&]list=([^&\s#]+)/);
+  if (m) str = m[1];
+  // Keep only valid playlist-ID characters (letters, digits, _ and -).
+  m = str.match(/^[A-Za-z0-9_-]+/);
+  return m ? m[0] : '';
+}
 
 function isPlaceholder(s) {
   return !s || typeof s !== 'string' || s.indexOf('PASTE_') === 0;
@@ -43,7 +59,7 @@ function saveState() {
   var data = safeGet(function () { return player.getVideoData(); }, null);
   var videoId = (data && data.video_id) || (list && idx >= 0 ? list[idx] : null);
   var state = {
-    playlistId: YOUTUBE_PLAYLIST_ID,
+    playlistId: PLAYLIST_ID,
     index: (typeof idx === 'number') ? idx : -1,
     videoId: videoId,
     time: time,
@@ -56,9 +72,6 @@ function startSaveTimer() {
   if (saveTimer) return;
   saveTimer = setInterval(saveState, SAVE_INTERVAL_MS);
 }
-function stopSaveTimer() {
-  if (saveTimer) { clearInterval(saveTimer); saveTimer = null; }
-}
 
 /* ---------- YouTube IFrame API bootstrap ---------- */
 
@@ -68,19 +81,18 @@ window.onYouTubeIframeAPIReady = function () {
 };
 
 function initPlayer() {
-  var vars = {
-    autoplay: 0,
-    controls: 1,
-    rel: 0,
-    modestbranding: 1,
-    playsinline: 1,
-    iv_load_policy: 3,
-    fs: 0
-  };
   player = new YT.Player('player', {
     height: '100%',
     width: '100%',
-    playerVars: vars,
+    playerVars: {
+      autoplay: 0,
+      controls: 1,
+      rel: 0,
+      modestbranding: 1,
+      playsinline: 1,
+      iv_load_policy: 3,
+      fs: 0
+    },
     events: {
       onReady: onPlayerReady,
       onStateChange: onPlayerStateChange,
@@ -90,15 +102,15 @@ function initPlayer() {
 }
 
 function onPlayerReady() {
-  if (isPlaceholder(YOUTUBE_PLAYLIST_ID)) {
-    showOverlay('No playlist configured.\nEdit config.js or paste a YouTube link below.');
+  if (isPlaceholder(PLAYLIST_ID) || !PLAYLIST_ID) {
+    showOverlay('No playlist configured.\nEdit config.js — or paste a YouTube link below.');
     return;
   }
-  pendingResume = loadState();
 
+  pendingResume = loadState();
   var startIdx = 0;
   var startSecs = 0;
-  if (pendingResume && pendingResume.playlistId === YOUTUBE_PLAYLIST_ID) {
+  if (pendingResume && pendingResume.playlistId === PLAYLIST_ID) {
     if (typeof pendingResume.index === 'number' && pendingResume.index >= 0) {
       startIdx = pendingResume.index;
     }
@@ -106,18 +118,15 @@ function onPlayerReady() {
   }
 
   try {
-    // cuePlaylist loads the playlist + seeks to position WITHOUT playing,
-    // so the passenger only needs one tap on Play to resume.
     player.cuePlaylist({
       listType: 'playlist',
-      list: YOUTUBE_PLAYLIST_ID,
+      list: PLAYLIST_ID,
       index: startIdx,
       startSeconds: startSecs
     });
     currentIndex = startIdx;
-    restoredOnce = true;
   } catch (e) {
-    showOverlay('Could not load playlist. Check the playlist ID in config.js.');
+    showOverlay('Could not load playlist.\nCheck the playlist ID in config.js.');
     return;
   }
 
@@ -126,17 +135,15 @@ function onPlayerReady() {
 }
 
 function onPlayerError(ev) {
-  // Common codes: 2 invalid param, 5 HTML5 error, 100 not found, 101/150 not embeddable
   var msg = 'Playback error (code ' + ev.data + ').';
   if (ev.data === 100) msg = 'Video not found or removed.';
   if (ev.data === 101 || ev.data === 150) msg = 'This video does not allow embedding.';
-  if (ev.data === 2) msg = 'Invalid video or playlist ID — check config.js.';
+  if (ev.data === 2) msg = 'Invalid video or playlist ID — check config.js.\nMake sure the playlist is Public or Unlisted.';
+  if (ev.data === 5) msg = 'HTML5 playback error.';
   showOverlay(msg);
 }
 
 function onPlayerStateChange(ev) {
-  // States: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
-  var btn = document.getElementById('btn-play');
   if (ev.data === YT.PlayerState.PLAYING) {
     setPlayButton(true);
     hideOverlay();
@@ -147,7 +154,6 @@ function onPlayerStateChange(ev) {
     saveState();
   } else if (ev.data === YT.PlayerState.ENDED) {
     saveState();
-    // The IFrame API auto-advances inside a playlist; this is a safety net.
     var idx = safeGet(function () { return player.getPlaylistIndex(); }, currentIndex);
     var list = safeGet(function () { return player.getPlaylist(); }, []);
     if (list && idx >= 0 && idx + 1 < list.length) {
@@ -203,10 +209,7 @@ function buildPlaylist(ids) {
   });
   renderPlaylist();
   updateCount();
-
-  if (!isPlaceholder(YOUTUBE_API_KEY) && ids.length) {
-    fetchVideoTitles(ids);
-  }
+  if (!isPlaceholder(API_KEY) && ids.length) fetchVideoTitles(ids);
 }
 
 function renderPlaylist() {
@@ -278,7 +281,7 @@ function fetchVideoTitles(ids) {
   chunks.forEach(function (chunk) {
     var url = 'https://www.googleapis.com/youtube/v3/videos'
             + '?part=snippet&id=' + chunk.join(',')
-            + '&key=' + encodeURIComponent(YOUTUBE_API_KEY);
+            + '&key=' + encodeURIComponent(API_KEY);
     fetch(url).then(function (r) {
       if (!r.ok) throw new Error('http ' + r.status);
       return r.json();
@@ -302,9 +305,7 @@ function fetchVideoTitles(ids) {
         }
       }
       if (changed) renderPlaylist();
-    }).catch(function () {
-      // Silently ignore — playlist still works, titles just stay generic.
-    });
+    }).catch(function () { /* silent */ });
   });
 }
 
@@ -321,7 +322,7 @@ function hideOverlay() {
   if (el) el.className = 'player-overlay hidden';
 }
 
-/* ---------- Paste-a-link fallback ---------- */
+/* ---------- Paste-a-link / source-handling ---------- */
 
 function extractVideoId(url) {
   if (!url) return null;
@@ -341,7 +342,85 @@ function extractVideoId(url) {
   return null;
 }
 
-/* ---------- Wire controls (DOM is already parsed; scripts at end of body) ---------- */
+function looksLikeUrl(s) {
+  return /^https?:\/\//i.test(s);
+}
+
+function openExternal(url) {
+  try {
+    var w = window.open(url, '_blank');
+    if (!w) { window.location.href = url; }
+  } catch (e) {
+    window.location.href = url;
+  }
+}
+
+/* ---------- Sources tab ---------- */
+
+function renderSources() {
+  var el = document.getElementById('source-list');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!SOURCES.length) {
+    var empty = document.createElement('li');
+    empty.className = 'pl-empty';
+    empty.textContent = 'No extra sources configured. Add some in config.js.';
+    el.appendChild(empty);
+    return;
+  }
+  for (var i = 0; i < SOURCES.length; i++) {
+    el.appendChild(makeSourceItem(SOURCES[i]));
+  }
+}
+
+function makeSourceItem(src) {
+  var li = document.createElement('li');
+  li.className = 'source-item';
+
+  var icon = document.createElement('div');
+  icon.className = 'source-icon';
+  icon.textContent = '▶';
+
+  var text = document.createElement('div');
+  text.className = 'source-text';
+
+  var name = document.createElement('div');
+  name.className = 'source-name';
+  name.textContent = src && src.name ? src.name : (src && src.url ? src.url : 'Untitled');
+
+  var urlDiv = document.createElement('div');
+  urlDiv.className = 'source-url';
+  urlDiv.textContent = src && src.url ? src.url : '';
+
+  text.appendChild(name);
+  text.appendChild(urlDiv);
+  li.appendChild(icon);
+  li.appendChild(text);
+
+  li.addEventListener('click', function () {
+    if (src && src.url) openExternal(src.url);
+  });
+  return li;
+}
+
+/* ---------- Tab switching ---------- */
+
+function activateTab(name) {
+  var tabs = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].className = (tabs[i].getAttribute('data-tab') === name) ? 'tab active' : 'tab';
+  }
+  var panels = [
+    { name: 'playlist', el: document.getElementById('tab-panel-playlist') },
+    { name: 'sources',  el: document.getElementById('tab-panel-sources')  }
+  ];
+  for (var j = 0; j < panels.length; j++) {
+    if (!panels[j].el) continue;
+    panels[j].el.className = (panels[j].name === name) ? 'tab-panel' : 'tab-panel hidden';
+  }
+}
+
+/* ---------- Wire controls ---------- */
 
 (function wireControls() {
   document.getElementById('btn-play').addEventListener('click', function () {
@@ -358,7 +437,6 @@ function extractVideoId(url) {
     if (!player) return;
     try { player.nextVideo(); } catch (e) {}
   });
-
   document.getElementById('btn-prev').addEventListener('click', function () {
     if (!player) return;
     try { player.previousVideo(); } catch (e) {}
@@ -372,7 +450,7 @@ function extractVideoId(url) {
       try {
         player.loadPlaylist({
           listType: 'playlist',
-          list: YOUTUBE_PLAYLIST_ID,
+          list: PLAYLIST_ID,
           index: 0,
           startSeconds: 0
         });
@@ -383,17 +461,36 @@ function extractVideoId(url) {
   document.getElementById('paste-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var input = document.getElementById('paste-input');
-    var id = extractVideoId(input.value);
-    if (!id) {
+    var raw = (input.value || '').trim();
+    if (!raw) return;
+
+    var id = extractVideoId(raw);
+    if (id) {
+      if (player) try { player.loadVideoById(id); } catch (e) {}
       input.value = '';
-      input.placeholder = 'Could not find a video ID — try again';
+      input.placeholder = 'Paste any YouTube URL — or any other web link…';
+      input.blur();
       return;
     }
-    if (player) {
-      try { player.loadVideoById(id); } catch (e) {}
+    if (looksLikeUrl(raw)) {
+      // Non-YouTube link: open in a new tab.
+      openExternal(raw);
+      input.value = '';
+      input.placeholder = 'Paste any YouTube URL — or any other web link…';
+      input.blur();
+      return;
     }
     input.value = '';
-    input.placeholder = 'Paste any YouTube URL…';
-    input.blur();
+    input.placeholder = 'Not a recognised link — try again';
   });
+
+  var tabBtns = document.querySelectorAll('.tab');
+  for (var i = 0; i < tabBtns.length; i++) {
+    tabBtns[i].addEventListener('click', function (ev) {
+      var name = ev.currentTarget.getAttribute('data-tab');
+      if (name) activateTab(name);
+    });
+  }
+
+  renderSources();
 })();
