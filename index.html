@@ -5,25 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#000000">
 <title>Playlist</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 <div class="app">
   <main class="layout">
 
     <section class="player-pane">
-      <div class="player-wrap">
+      <div class="player-wrap" id="player-wrap">
         <div id="player"></div>
         <div id="player-overlay" class="player-overlay hidden">
           <div class="overlay-text" id="overlay-text">Loading playlist&hellip;</div>
         </div>
       </div>
 
-      <div class="controls">
-        <button class="btn btn-secondary" id="btn-prev" type="button">&#9664;&#9664; Prev</button>
-        <button class="btn btn-primary" id="btn-play" type="button">&#9658; Play</button>
-        <button class="btn btn-secondary" id="btn-next" type="button">Next &#9654;&#9654;</button>
-        <button class="btn btn-restart" id="btn-restart" type="button">&#8634; Restart</button>
+      <div class="controls" id="yt-controls">
+        <button class="btn btn-secondary" id="btn-prev"    type="button">&#9664;&#9664; Prev</button>
+        <button class="btn btn-primary"   id="btn-play"    type="button">&#9658; Play</button>
+        <button class="btn btn-secondary" id="btn-next"    type="button">Next &#9654;&#9654;</button>
+        <button class="btn btn-restart"   id="btn-restart" type="button">&#8634; Restart</button>
+      </div>
+
+      <div class="controls hidden" id="ext-controls">
+        <button class="btn btn-secondary" id="btn-back-yt" type="button">&#8592; Back to YouTube</button>
+        <button class="btn btn-primary"   id="btn-open-tab" type="button">Open in new tab &#8599;</button>
       </div>
 
       <form class="paste" id="paste-form" autocomplete="off">
@@ -53,7 +58,7 @@
       <div class="tab-panel hidden" id="tab-panel-sources">
         <div class="playlist-header">
           <span>Other sources</span>
-          <span class="playlist-count">opens new tab</span>
+          <span class="playlist-count">tap to watch</span>
         </div>
         <ol class="source-list" id="source-list">
           <li class="pl-empty">No extra sources configured.</li>
@@ -64,8 +69,8 @@
   </main>
 </div>
 
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=3"></script>
+<script src="app.js?v=3"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>

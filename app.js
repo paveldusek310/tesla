@@ -21,14 +21,13 @@ var currentIndex = -1;
 var saveTimer = null;
 var buildTries = 0;
 var pendingResume = null;
+var externalMode = false;
 
 function sanitizePlaylistId(s) {
   if (!s) return '';
   var str = String(s).trim();
-  // If they pasted a full URL or "?list=..." fragment, find the list= param.
   var m = str.match(/[?&]list=([^&\s#]+)/);
   if (m) str = m[1];
-  // Keep only valid playlist-ID characters (letters, digits, _ and -).
   m = str.match(/^[A-Za-z0-9_-]+/);
   return m ? m[0] : '';
 }
@@ -75,10 +74,7 @@ function startSaveTimer() {
 
 /* ---------- YouTube IFrame API bootstrap ---------- */
 
-// Called automatically by the YouTube IFrame API once it has loaded.
-window.onYouTubeIframeAPIReady = function () {
-  initPlayer();
-};
+window.onYouTubeIframeAPIReady = function () { initPlayer(); };
 
 function initPlayer() {
   player = new YT.Player('player', {
@@ -91,7 +87,9 @@ function initPlayer() {
       modestbranding: 1,
       playsinline: 1,
       iv_load_policy: 3,
-      fs: 0
+      enablejsapi: 1
+      // NB: 'fs' omitted on purpose — default is 1, which enables the
+      // YouTube player's built-in fullscreen button (bottom-right).
     },
     events: {
       onReady: onPlayerReady,
@@ -254,6 +252,7 @@ function onPlaylistItemClick(ev) {
   var li = ev.currentTarget;
   var idx = parseInt(li.getAttribute('data-index'), 10);
   if (isNaN(idx) || !player) return;
+  if (externalMode) restoreYouTubePlayer();
   try { player.playVideoAt(idx); } catch (e) {}
 }
 
@@ -322,7 +321,7 @@ function hideOverlay() {
   if (el) el.className = 'player-overlay hidden';
 }
 
-/* ---------- Paste-a-link / source-handling ---------- */
+/* ---------- URL helpers ---------- */
 
 function extractVideoId(url) {
   if (!url) return null;
@@ -342,9 +341,7 @@ function extractVideoId(url) {
   return null;
 }
 
-function looksLikeUrl(s) {
-  return /^https?:\/\//i.test(s);
-}
+function looksLikeUrl(s) { return /^https?:\/\//i.test(s); }
 
 function openExternal(url) {
   try {
@@ -352,6 +349,75 @@ function openExternal(url) {
     if (!w) { window.location.href = url; }
   } catch (e) {
     window.location.href = url;
+  }
+}
+
+/* ---------- External-iframe mode (non-YouTube URLs) ---------- */
+
+function embedExternalUrl(url) {
+  if (!url) return;
+  externalMode = true;
+
+  try { if (player && player.pauseVideo) player.pauseVideo(); } catch (e) {}
+
+  hideOverlay();
+
+  // Remove any previous external iframe
+  var existing = document.getElementById('external-iframe');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  // Hide the YouTube player iframe (it keeps its state under the hood)
+  var yt = document.getElementById('player');
+  if (yt) yt.style.display = 'none';
+
+  // Create the external iframe
+  var iframe = document.createElement('iframe');
+  iframe.id = 'external-iframe';
+  iframe.src = url;
+  iframe.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+
+  var wrap = document.getElementById('player-wrap');
+  if (wrap) wrap.appendChild(iframe);
+
+  // Swap visible controls
+  toggleControls(true);
+
+  // Stash the URL on the "open in new tab" button so its handler can use it
+  var openBtn = document.getElementById('btn-open-tab');
+  if (openBtn) openBtn.setAttribute('data-url', url);
+
+  // Many big sites (ČT, broadcasters, news sites) send X-Frame-Options that
+  // forbid embedding — the iframe will render blank. After a short delay,
+  // surface a friendly hint so the user knows what to do.
+  setTimeout(function () {
+    if (!externalMode) return;
+    var iframeNow = document.getElementById('external-iframe');
+    if (!iframeNow) return;
+    showOverlay('If the page is blank, this site blocks embedding.\nTap "Open in new tab" above.');
+  }, 4500);
+}
+
+function restoreYouTubePlayer() {
+  externalMode = false;
+  var iframe = document.getElementById('external-iframe');
+  if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  var yt = document.getElementById('player');
+  if (yt) yt.style.display = '';
+  toggleControls(false);
+  hideOverlay();
+}
+
+function toggleControls(showExternal) {
+  var ytC  = document.getElementById('yt-controls');
+  var extC = document.getElementById('ext-controls');
+  if (showExternal) {
+    if (ytC)  ytC.className  = 'controls hidden';
+    if (extC) extC.className = 'controls';
+  } else {
+    if (ytC)  ytC.className  = 'controls';
+    if (extC) extC.className = 'controls hidden';
   }
 }
 
@@ -398,7 +464,7 @@ function makeSourceItem(src) {
   li.appendChild(text);
 
   li.addEventListener('click', function () {
-    if (src && src.url) openExternal(src.url);
+    if (src && src.url) embedExternalUrl(src.url);
   });
   return li;
 }
@@ -458,6 +524,14 @@ function activateTab(name) {
     }
   });
 
+  document.getElementById('btn-back-yt').addEventListener('click', function () {
+    restoreYouTubePlayer();
+  });
+  document.getElementById('btn-open-tab').addEventListener('click', function (ev) {
+    var url = ev.currentTarget.getAttribute('data-url') || '';
+    if (url) openExternal(url);
+  });
+
   document.getElementById('paste-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var input = document.getElementById('paste-input');
@@ -466,22 +540,18 @@ function activateTab(name) {
 
     var id = extractVideoId(raw);
     if (id) {
+      if (externalMode) restoreYouTubePlayer();
       if (player) try { player.loadVideoById(id); } catch (e) {}
+    } else if (looksLikeUrl(raw)) {
+      embedExternalUrl(raw);
+    } else {
       input.value = '';
-      input.placeholder = 'Paste any YouTube URL — or any other web link…';
-      input.blur();
-      return;
-    }
-    if (looksLikeUrl(raw)) {
-      // Non-YouTube link: open in a new tab.
-      openExternal(raw);
-      input.value = '';
-      input.placeholder = 'Paste any YouTube URL — or any other web link…';
-      input.blur();
+      input.placeholder = 'Not a recognised link — try again';
       return;
     }
     input.value = '';
-    input.placeholder = 'Not a recognised link — try again';
+    input.placeholder = 'Paste any YouTube URL — or any other web link…';
+    input.blur();
   });
 
   var tabBtns = document.querySelectorAll('.tab');

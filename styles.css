@@ -49,12 +49,14 @@ input { user-select: text; -webkit-user-select: text; }
 }
 
 #player,
-.player-wrap iframe {
+.player-wrap iframe,
+#external-iframe {
   position: absolute;
   top: 0; left: 0;
   width: 100% !important;
   height: 100% !important;
   border: 0;
+  background: #000;
 }
 
 .player-overlay {
