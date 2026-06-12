@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Playlist</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <main class="layout">
+
+    <section class="player-pane">
+      <div class="player-wrap">
+        <div id="player"></div>
+        <div id="player-overlay" class="player-overlay hidden">
+          <div class="overlay-text" id="overlay-text">Loading playlist&hellip;</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-secondary" id="btn-prev" type="button">&#9664;&#9664; Prev</button>
+        <button class="btn btn-primary" id="btn-play" type="button">&#9658; Play</button>
+        <button class="btn btn-secondary" id="btn-next" type="button">Next &#9654;&#9654;</button>
+        <button class="btn btn-restart" id="btn-restart" type="button">&#8634; Restart</button>
+      </div>
+
+      <form class="paste" id="paste-form" autocomplete="off">
+        <input type="text" id="paste-input" class="paste-input"
+               placeholder="Paste any YouTube URL&hellip;"
+               autocomplete="off" autocorrect="off" spellcheck="false">
+        <button type="submit" class="btn btn-paste">Load link</button>
+      </form>
+    </section>
+
+    <aside class="playlist-pane">
+      <div class="playlist-header">
+        <span id="playlist-title">Playlist</span>
+        <span class="playlist-count" id="playlist-count"></span>
+      </div>
+      <ol class="playlist" id="playlist">
+        <li class="pl-empty">Loading&hellip;</li>
+      </ol>
+    </aside>
+
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
