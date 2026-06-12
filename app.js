@@ -4,6 +4,40 @@
  */
 'use strict';
 
+/* Tesla freezes the iframe's compositor surface when the car leaves Park;
+ * audio keeps playing but video sticks on the shift-into-D frame. Tesla owns
+ * the browser, so there's no clean fix — the block below is a best-effort
+ * head-fake. Only an in-car test tells if it survives your firmware version.
+ * PASSENGER USE ONLY — drivers must not watch video while driving. */
+(function teslaKeepAlive() {
+  try {
+    Object.defineProperty(document, 'hidden',                { configurable: true, get: function () { return false; } });
+    Object.defineProperty(document, 'visibilityState',       { configurable: true, get: function () { return 'visible'; } });
+    Object.defineProperty(document, 'webkitHidden',          { configurable: true, get: function () { return false; } });
+    Object.defineProperty(document, 'webkitVisibilityState', { configurable: true, get: function () { return 'visible'; } });
+  } catch (e) {}
+
+  var swallow = function (e) { e.stopImmediatePropagation(); };
+  ['visibilitychange', 'webkitvisibilitychange', 'pagehide', 'blur', 'freeze'].forEach(function (evt) {
+    document.addEventListener(evt, swallow, true);
+    window.addEventListener(evt, swallow, true);
+  });
+
+  // Perpetual sub-pixel transform on the iframe wrapper keeps the GPU
+  // compositor producing frames for that surface even when Tesla parks it.
+  var style = document.createElement('style');
+  style.textContent =
+    '@keyframes tesla-keepalive { from { transform: translateZ(0); } to { transform: translateZ(0.0001px); } }' +
+    '#player-wrap { animation: tesla-keepalive 1s linear infinite; will-change: transform; }';
+  (document.head || document.documentElement).appendChild(style);
+
+  function tick() { void document.body.offsetWidth; requestAnimationFrame(tick); }
+  if (typeof requestAnimationFrame === 'function') {
+    if (document.body) requestAnimationFrame(tick);
+    else document.addEventListener('DOMContentLoaded', function () { requestAnimationFrame(tick); });
+  }
+})();
+
 var STORAGE_KEY = 'tesla-playlist:v1';
 var SAVE_INTERVAL_MS = 5000;
 var BUILD_PLAYLIST_RETRY_MS = 400;
