@@ -23,12 +23,13 @@
     window.addEventListener(evt, swallow, true);
   });
 
-  // Perpetual sub-pixel transform on the iframe wrapper keeps the GPU
-  // compositor producing frames for that surface even when Tesla parks it.
+  // Perpetual sub-pixel transform on the YT iframe itself (not just the
+  // wrapper) keeps the GPU compositor producing frames for *that* surface,
+  // which is the one Tesla parks. The wrapper is animated too as backup.
   var style = document.createElement('style');
   style.textContent =
     '@keyframes tesla-keepalive { from { transform: translateZ(0); } to { transform: translateZ(0.0001px); } }' +
-    '#player-wrap { animation: tesla-keepalive 1s linear infinite; will-change: transform; }';
+    '#player-wrap, .player-wrap iframe, #player { animation: tesla-keepalive 1s linear infinite; will-change: transform; }';
   (document.head || document.documentElement).appendChild(style);
 
   function tick() { void document.body.offsetWidth; requestAnimationFrame(tick); }
@@ -106,6 +107,43 @@ function startSaveTimer() {
   saveTimer = setInterval(saveState, SAVE_INTERVAL_MS);
 }
 
+/* Tesla keep-alive part B: nudge the YT decoder once per second by seeking
+ * forward 1 ms. Some Tesla firmwares thaw the iframe surface when the
+ * decoder emits a fresh frame. Inaudible in practice. PASSENGER USE ONLY. */
+var keepAliveSeekTimer = null;
+function startKeepAliveSeek() {
+  if (keepAliveSeekTimer) return;
+  keepAliveSeekTimer = setInterval(function () {
+    if (!player || externalMode) return;
+    var st = safeGet(function () { return player.getPlayerState(); }, -1);
+    if (st !== YT.PlayerState.PLAYING) return;
+    var t = safeGet(function () { return player.getCurrentTime(); }, 0);
+    try { player.seekTo(t + 0.001, true); } catch (e) {}
+  }, 1000);
+}
+
+/* Tesla keep-alive part D: nuclear option. Tears down the YT player and
+ * rebuilds it; resumes from the last saved playlist index + time. Wired to
+ * the orange Refresh button — passenger taps it when the picture is stuck. */
+function refreshIframe() {
+  if (externalMode) {
+    var ext = document.getElementById('external-iframe');
+    if (ext) { var src = ext.src; ext.src = 'about:blank'; setTimeout(function () { ext.src = src; }, 50); }
+    return;
+  }
+  saveState();
+  showOverlay('Refreshing…');
+  try { if (player && player.destroy) player.destroy(); } catch (e) {}
+  player = null;
+  var wrap = document.getElementById('player-wrap');
+  if (wrap && !document.getElementById('player')) {
+    var div = document.createElement('div');
+    div.id = 'player';
+    wrap.insertBefore(div, wrap.firstChild);
+  }
+  setTimeout(function () { initPlayer(); }, 100);
+}
+
 /* ---------- YouTube IFrame API bootstrap ---------- */
 
 window.onYouTubeIframeAPIReady = function () { initPlayer(); };
@@ -180,6 +218,7 @@ function onPlayerStateChange(ev) {
     setPlayButton(true);
     hideOverlay();
     startSaveTimer();
+    startKeepAliveSeek();
     syncCurrentIndex();
   } else if (ev.data === YT.PlayerState.PAUSED) {
     setPlayButton(false);
@@ -540,6 +579,10 @@ function activateTab(name) {
   document.getElementById('btn-prev').addEventListener('click', function () {
     if (!player) return;
     try { player.previousVideo(); } catch (e) {}
+  });
+
+  document.getElementById('btn-refresh').addEventListener('click', function () {
+    refreshIframe();
   });
 
   document.getElementById('btn-restart').addEventListener('click', function () {

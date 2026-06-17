@@ -115,6 +115,7 @@ input { user-select: text; -webkit-user-select: text; }
 
 .btn-secondary { background: #1a1a1a; }
 .btn-restart   { background: #3a3a3a; border-color: #444; }
+.btn-refresh   { background: #8a4a00; border-color: #a05800; }
 
 /* ---------- Paste row ---------- */
 .paste {
