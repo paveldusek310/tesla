@@ -21,6 +21,7 @@ const YOUTUBE_API_KEY = "PASTE_KEY_HERE";
 //
 // Add, remove or rearrange entries here. The list can be empty: [].
 const EXTRA_SOURCES = [
+  { name: "TeslaTelek (YT via Telegram)", url: "https://teslatelek.com" },
   { name: "ČT24 — Live",   url: "https://ct24.ceskatelevize.cz/video/zive-vysilani" },
   { name: "ČT iVysílání",  url: "https://www.ceskatelevize.cz/ivysilani/" }
 ];
